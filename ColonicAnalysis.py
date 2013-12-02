@@ -239,7 +239,7 @@ class ColonicAnalysisWidget:
         self.r32Button.enabled = True
     self.logic.setVolumeAttributes()
     self.logic.fixSpectLevel()
-    self.logic.setViews(self.logic.currentView)
+    self.changeView(self.logic.currentView)
       
   def onView6hr(self):
     self.changeView("6HR")
@@ -254,8 +254,10 @@ class ColonicAnalysisWidget:
     #print("changeView " + view)
     self.logic.currentView = view
     self.logic.setViews(self.logic.currentView)
-    self.slider.value = self.logic.thresholds[self.logic.currentView]
+    self.slider.value = self.logic.colonData[self.logic.currentView]['Threshold']
     self.clearStats()
+    if not self.logic.renderView('LA', 'label'):
+      self.logic.renderView('TH', 'threshold')
     
   def onViewSelect(self, node):
     print ("onViewSelect")
@@ -271,21 +273,22 @@ class ColonicAnalysisWidget:
 
     
   def onCalcThreshold(self):
-    sMax, sThr = self.logic.calculateThreshold()
+    sMax, sThr = self.logic.calculateThreshold(self.logic.currentView)
     self.slider.maximum = sMax
     self.slider.value = sThr
     self.slider.enabled = True
-    self.logic.setViews(self.logic.currentView)
+    self.changeView(self.logic.currentView)
     self.logic.updateActiveVolumes()
      
   def onSliderValueChanged(self,value):
-      if self.logic.thresholds[self.logic.currentView] == 0 and value > 0:
-        self.logic.applyThreshold(int(value))
-        self.logic.setViews(self.logic.currentView)
+      if self.logic.colonData[self.logic.currentView]['Threshold'] == 0 and value > 0:
+        self.logic.applyThreshold(self.logic.currentView, int(value))
+        self.logic.updateActiveVolumes()
+        self.changeView(self.logic.currentView)
 
   def onTresholdRefresh(self):
-      self.logic.applyThreshold(self.slider.value)
-      self.logic.setViews(self.logic.currentView)
+      self.logic.applyThreshold(self.logic.currentView, self.slider.value)
+      self.changeView(self.logic.currentView)
       
       
   def onEditor(self):
@@ -296,17 +299,16 @@ class ColonicAnalysisWidget:
     #self.slider.enabled = volumeCount > 0
     #self.slider.maximum = volumeCount-1
 
-  def volumesAreValid(self):
-    """Verify that the SPECT and label volumes exist"""
-    nodes = self.logic.getColonNodes(self.logic.currentView)
-    if nodes['SPECT'] == None or nodes['LABEL'] == None:
-      return False
-    return True
+  def volumesAreValid(self, timepoint):
+    """Verify that the SPECT and label volumes exist for timepoint"""
+    if self.logic.colonData[timepoint]['SP']['Active'] and self.logic.colonData[timepoint]['LA']['Active']:
+      return True
+    return False
 
   def onStats(self):
     """Calculate the label statistics
     """
-    if not self.volumesAreValid():
+    if not self.volumesAreValid(self.logic.currentView):
       qt.QMessageBox.warning(slicer.util.mainWindow(),
           "Label Statistics", "Either the SPECT or Label volume does not exist.")
       return
@@ -345,13 +347,14 @@ class ColonicAnalysisWidget:
   def populateStats(self):
     if not self.logic:
       return
-    self.nodes = self.logic.getColonNodes(self.logic.currentView)
-    labelvol = slicer.util.getNode(self.nodes['LABEL'])
+    labelvol = slicer.util.getNode(self.logic.colonData[self.logic.currentView]['LA']['ID'])
+    #self.nodes = self.logic.getColonNodes(self.logic.currentView)
+    #labelvol = slicer.util.getNode(self.nodes['LABEL'])
     displayNode = labelvol.GetDisplayNode()
     colorNode = displayNode.GetColorNode()
     lut = colorNode.GetLookupTable()
     numLabels = colorNode.GetNumberOfColors()
-    self.logic.computeMean(self.nodes)
+    self.logic.computeMean(self.logic.currentView)
     self.items = []
     self.model = qt.QStandardItemModel()
     self.view.setModel(self.model)
@@ -648,12 +651,13 @@ class ColonicAnalysisLogic:
                 sliceCompositeNode.SetForegroundOpacity(0.5)
                 sliceCompositeNode.SetLinkedControl(1)
         appLogic.PropagateVolumeSelection()
-      
+
+        
     def setViews(self, timePoint):
-      """ Set the CT as the background and SPECT as foreground in R,Y,G views for timePoint.
+      """ Set the CT, SPECT and Label volumes in R,Y,G views for timePoint.
           If CT is not available set SPECT as background.
       """
-      #print ("setViews " + timePoint)
+      print ("setViews() " + timePoint)
       setActive = False
       setSecondary = False
       setLabel = False
@@ -667,32 +671,33 @@ class ColonicAnalysisLogic:
       selectionNode.SetReferenceSecondaryVolumeID(None)
       selectionNode.SetReferenceActiveLabelVolumeID(None)
       appLogic.PropagateVolumeSelection()
-      nodes = self.getColonNodes(timePoint)
-      if nodes['CT'] == None:
-        if nodes['THRESHOLD'] == None:
-          selectionNode.SetReferenceSecondaryVolumeID(nodes['SPECT'])
+      cdt = self.colonData[timePoint]
+      if cdt['CT']['Active']:
+        selectionNode.SetReferenceActiveVolumeID(cdt['CT']['ID'])
+        if cdt['TH']['Active']:
+          selectionNode.SetReferenceSecondaryVolumeID(cdt['TH']['ID'])
         else:
-          selectionNode.SetReferenceActiveVolumeID(nodes['THRESHOLD'])    
-      else:
-        selectionNode.SetReferenceActiveVolumeID(nodes['CT'])
-        if nodes['THRESHOLD'] == None:
-            selectionNode.SetReferenceSecondaryVolumeID(nodes['SPECT'])
-        else:
-            selectionNode.SetReferenceSecondaryVolumeID(nodes['THRESHOLD'])
+          selectionNode.SetReferenceSecondaryVolumeID(cdt['SP']['ID'])
         for sliceCompositeNode in slicer.util.getNodes('vtkMRMLSliceCompositeNode*').values():
             sliceCompositeNode.SetForegroundOpacity(0.5)
             sliceCompositeNode.SetLinkedControl(1)
-      if nodes['LABEL'] != None:
-          selectionNode.SetReferenceActiveLabelVolumeID(nodes['LABEL'])
+      else:
+        if cdt['TH']['Active']:
+          selectionNode.SetReferenceActiveVolumeID(cdt['TH']['ID'])    
+        else:
+          selectionNode.SetReferenceSecondaryVolumeID(cdt['SP']['ID'])
+      if not cdt['LA']['Active']:
+          selectionNode.SetReferenceActiveLabelVolumeID(cdt['LA']['ID'])
       appLogic.PropagateVolumeSelection()
-      if not self.renderView('LABEL', 'label'):
-        self.renderView('THRESHOLD', 'threshold')
-    
+     
+     
     def renderView(self, vtype, vend):
       #print ("renderView " + vtype)
-      myNodes = self.getColonNodes(self.currentView)
-      if myNodes[vtype] == None:
+      if not self.colonData[self.currentView][vtype]['Active']:
         return False
+      #myNodes = self.getColonNodes(self.currentView)
+      #if myNodes[vtype] == None:
+        #return False
       volumesLogic = slicer.modules.volumes.logic()
       volumerenderlogic = slicer.modules.volumerendering.logic()
       nodes = slicer.util.getNodes('*Render*')
@@ -710,7 +715,7 @@ class ColonicAnalysisLogic:
           break
       if foundNode == False:
         #print "Create new node"
-        volumeNode = slicer.util.getNode(myNodes[vtype])
+        volumeNode = slicer.util.getNode(self.colonData[self.currentView][vtype]['ID'])
         displayNode = volumerenderlogic.CreateVolumeRenderingDisplayNode()
         slicer.mrmlScene.AddNode(displayNode)
         displayNode.UnRegister(volumerenderlogic)
@@ -719,86 +724,6 @@ class ColonicAnalysisLogic:
       volumeNode.AddAndObserveDisplayNodeID(displayNode.GetID())
       return True
         
-    def renderThresholdView(self):
-      myNodes = self.getColonNodes(self.currentView)
-      if myNodes['THRESHOLD'] == None:
-        return False
-      volumesLogic = slicer.modules.volumes.logic()
-      volumerenderlogic = slicer.modules.volumerendering.logic()
-      nodes = slicer.util.getNodes('*Render*')
-      foundNode = False
-      for nodeName, nodeID in nodes.items():
-        if nodeID.GetVolumeNodeID() == None:
-          break
-        foundNode = True
-        volumeNode = slicer.util.getNode(nodeID.GetVolumeNodeID())
-        volumeName = volumeNode.GetName()
-        if volumeName.find(self.currentView) != -1 and volumeName.endswith("threshold"):
-          displayNode = nodeID
-          break
-      if foundNode == False:
-        volumeNode = slicer.util.getNode(myNodes['THRESHOLD'])
-        displayNode = volumerenderlogic.CreateVolumeRenderingDisplayNode()
-        slicer.mrmlScene.AddNode(displayNode)
-        displayNode.UnRegister(volumerenderlogic)
-      volumerenderlogic.UpdateDisplayNodeFromVolumeNode(displayNode, volumeNode)
-      #propertyNode = displayNode.GetVolumePropertyNode().GetVolumeProperty().ShadeOff()
-      displayNode.GetVolumePropertyNode().GetVolumeProperty().ShadeOff()
-      #propertyNode.GetVolumeProperty().ShadeOff()
-      volumeNode.AddAndObserveDisplayNodeID(displayNode.GetID())
-      return True
-        
-    def renderLabelView(self):
-      myNodes = self.getColonNodes(self.currentView)
-      if myNodes['LABEL'] == None:
-        return False
-      volumesLogic = slicer.modules.volumes.logic()
-      volumerenderlogic = slicer.modules.volumerendering.logic()
-      nodes = slicer.util.getNodes('*Render*')
-      foundNode = False
-      for nodeName, nodeID in nodes.items():
-        volumeNode = slicer.util.getNode(nodeID.GetVolumeNodeID())
-        volumeName = volumeNode.GetName()
-        if volumeName.find(self.currentView) != -1 and volumeName.endswith("label"):
-          displayNode = nodeID
-          break
-      if foundNode == False:
-        volumeNode = slicer.util.getNode(myNodes['LABEL'])
-        displayNode = volumerenderlogic.CreateVolumeRenderingDisplayNode()
-        slicer.mrmlScene.AddNode(displayNode)
-        displayNode.UnRegister(volumerenderlogic)
-      volumerenderlogic.UpdateDisplayNodeFromVolumeNode(displayNode, volumeNode)
-      volumeNode.AddAndObserveDisplayNodeID(displayNode.GetID())
-      #propertyNode = displayNode.GetVolumePropertyNode()
-      #propertyNode.ShadeOff()
-      return True
-
-    def renderSPECTView(self):
-      print "renderSPECTView()"
-      myNodes = self.getColonNodes(self.currentView)
-      if myNodes['SPECT'] == None:
-        return False
-      volumesLogic = slicer.modules.volumes.logic()
-      volumerenderlogic = slicer.modules.volumerendering.logic()
-      nodes = slicer.util.getNodes('*Render*')
-      foundNode = False
-      for nodeName, nodeID in nodes.items():
-        volumeNode = slicer.util.getNode(nodeID.GetVolumeNodeID())
-        volumeName = volumeNode.GetName()
-        if volumeName.find(self.currentView) != -1 and volumeName.endswith("Transaxials"):
-          displayNode = nodeID
-          break
-      if foundNode == False:
-        volumeNode = slicer.util.getNode(myNodes['SPECT'])
-        displayNode = volumerenderlogic.CreateVolumeRenderingDisplayNode()
-        slicer.mrmlScene.AddNode(displayNode)
-        displayNode.UnRegister(volumerenderlogic)
-      volumerenderlogic.UpdateDisplayNodeFromVolumeNode(displayNode, volumeNode)
-      volumeNode.AddAndObserveDisplayNodeID(displayNode.GetID())
-      #propertyNode = displayNode.GetVolumePropertyNode()
-      #propertyNode.ShadeOff()
-      return True
-
       
     def getColonNodes(self, timePoint):
         colonNodes = dict(CT=None, SPECT=None, LABEL=None, THRESHOLD=None)
@@ -816,28 +741,27 @@ class ColonicAnalysisLogic:
             print "No CT or SPECT data!"
         return colonNodes
 
-    def calculateThreshold(self):
-        #print "calculateThreshold"
-        nodes = self.getColonNodes(self.currentView)
-        arrayv = slicer.util.array(nodes['SPECT'])
-        volumeNode = slicer.util.getNode(nodes['SPECT'])
-        maxVal = arrayv.max()
-        myVals, myLimits = np.histogram(arrayv, bins = 100)
-        volName = slicer.util.getNode(nodes['SPECT']).GetName()
-        if nodes['THRESHOLD'] == None:
-            outputVolume = self.volumesLogic.CloneVolume(slicer.mrmlScene, volumeNode, volName+'-threshold')
-        else:
-            outputVolume = slicer.util.getNode(nodes['THRESHOLD'])
-        #print("%3.0f, %3.0f" % (myLimits[9],myLimits[10]))
-        return [maxVal, myLimits[9]]
+    def calculateThreshold(self, timePoint):
+      print "calculateThreshold()"
+      cvt = self.colonData[self.currentView]
+      arrayv = slicer.util.array(cvt['SP']['ID'])
+      volumeNode = slicer.util.getNode(cvt['SP']['ID'])
+      maxVal = arrayv.max()
+      myVals, myLimits = np.histogram(arrayv, bins = 100)
+      volName = cvt['SP']['Name']
+      if cvt['TH']['Active']:
+        outputVolume = slicer.util.getNode(cvt['TH']['ID'])
+      else:
+        outputVolume = self.volumesLogic.CloneVolume(slicer.mrmlScene, volumeNode, volName+'-threshold')
+      #print("%3.0f, %3.0f" % (myLimits[9],myLimits[10]))
+      return [maxVal, myLimits[9]]
         
-    def applyThreshold(self, thrsh):
-        #print "applyThreshold"
+    def applyThreshold(self, timePoint, thrsh):
+        print "applyThreshold()"
         parameters = {}
-        nodes = self.getColonNodes(self.currentView)
-        self.thresholds[self.currentView] = thrsh
-        volumeNode = slicer.util.getNode(nodes['SPECT'])
-        outputVolume = slicer.util.getNode(nodes['THRESHOLD'])
+        self.colonData[timePoint]['Threshold'] = thrsh
+        volumeNode = slicer.util.getNode(self.colonData[timePoint]['SP']['ID'])
+        outputVolume = slicer.util.getNode(self.colonData[timePoint]['TH']['ID'])
         if not (volumeNode and outputVolume):
             qt.QMessageBox.critical(
                 slicer.util.mainWindow(),
@@ -862,34 +786,38 @@ class ColonicAnalysisLogic:
         selectionNode.SetReferenceActiveVolumeID( nodes[names[index]].GetID() )
         slicer.app.applicationLogic().PropagateVolumeSelection(0)
         
-    def computeMean(self, nodes):
-        arrayv = slicer.util.array(nodes['SPECT'])
-        arrayl = slicer.util.array(nodes['LABEL'])
-        cubicMMPerVoxel = reduce(lambda x,y: x*y, slicer.util.getNode(nodes['LABEL']).GetSpacing())
-        ccPerCubicMM = 0.001
-        #ma.masked_array(arrayv, (arrayl != 2)).sum()
-        #totalCounts = 0
-        roiCounts = [0]
-        for i in range(1,len(self.colonRegions)):
-            self.labelStats["Labels"].append(i)
-            self.labelStats[i,"Label"] = i
-            self.labelStats[i,"Voxels"] = 0
-            self.labelStats[i,"Total Counts"] = 0
-            if (arrayl == i).any():
-                maskedArray = ma.masked_array(arrayv, (arrayl != i))
-                self.labelStats[i,"Voxels"] = (maskedArray > 0).sum()
-                myCounts = maskedArray.sum()
-                self.labelStats[i,"Total Counts"] = myCounts
-                roiCounts.append(myCounts)
-                self.totalCounts += myCounts
-            else:
-                roiCounts.append(0)
-            self.labelStats[i,"Volume cc"] = "%2.3f" % (self.labelStats[i,"Voxels"] * cubicMMPerVoxel * ccPerCubicMM)
-        #computedMean = 0.0
-        for i in range(len(roiCounts)):
-            sm = (float(roiCounts[i])/float(self.totalCounts))*float(i)
-            self.labelStats[i,"SPECT Mean"] = "%2.3f" % sm
-            self.computedMean += sm
+    def computeMean(self, timePoint):
+      cvt = self.colonData[self.currentView]
+      arrayv = slicer.util.array(cvt['SP']['ID'])
+      arrayl = slicer.util.array(cvt['LA']['ID'])
+      cubicMMPerVoxel = reduce(lambda x,y: x*y, slicer.util.getNode(cvt['SP']['ID']).GetSpacing())
+      #arrayv = slicer.util.array(nodes['SPECT'])
+      #arrayl = slicer.util.array(nodes['LABEL'])
+      #cubicMMPerVoxel = reduce(lambda x,y: x*y, slicer.util.getNode(nodes['LABEL']).GetSpacing())
+      ccPerCubicMM = 0.001
+      #ma.masked_array(arrayv, (arrayl != 2)).sum()
+      #totalCounts = 0
+      roiCounts = [0]
+      for i in range(1,len(self.colonRegions)):
+          self.labelStats["Labels"].append(i)
+          self.labelStats[i,"Label"] = i
+          self.labelStats[i,"Voxels"] = 0
+          self.labelStats[i,"Total Counts"] = 0
+          if (arrayl == i).any():
+              maskedArray = ma.masked_array(arrayv, (arrayl != i))
+              self.labelStats[i,"Voxels"] = (maskedArray > 0).sum()
+              myCounts = maskedArray.sum()
+              self.labelStats[i,"Total Counts"] = myCounts
+              roiCounts.append(myCounts)
+              self.totalCounts += myCounts
+          else:
+              roiCounts.append(0)
+          self.labelStats[i,"Volume cc"] = "%2.3f" % (self.labelStats[i,"Voxels"] * cubicMMPerVoxel * ccPerCubicMM)
+      #computedMean = 0.0
+      for i in range(len(roiCounts)):
+          sm = (float(roiCounts[i])/float(self.totalCounts))*float(i)
+          self.labelStats[i,"SPECT Mean"] = "%2.3f" % sm
+          self.computedMean += sm
         
     def statsAsCSV(self):
       """
@@ -930,7 +858,7 @@ class ColonicAnalysisLogic:
       if self.colonData[timePoint]['TH']['Active']:
         volumeNode = slicer.util.getNode(self.colonData[timePoint]['TH']['ID'])
         labelNode = volumesLogic.CreateAndAddLabelVolume(volumeNode, volumeNode.GetName()+'-label')
-        labelNode.GetDisplayNode().SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileColonColor.txt')
+        labelNode.GetDisplayNode().SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileColonColors.txt')
         self.updateActiveVolumes()
 
     
