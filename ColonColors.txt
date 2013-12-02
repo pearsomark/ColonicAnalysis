@@ -1,0 +1,11 @@
+##Filename: ColonColors
+1    precolon           255 205 175 255
+2    ascending_1        220 170 120 255
+3    ascending_2        111 184 210 255
+4    transverse_1       216 101 79 255
+5    transverse_2       182 166 110 255
+6    transverse_3       144 238 144 255
+7    transverse_4       183 156 220 255
+8    neorectum          220 245 20 255
+9    stool              78 63 0 255
+#EOF
