@@ -181,8 +181,8 @@ class ColonicAnalysisWidget:
     
     
     
-    #self.view6hrButton = qt.QPushButton("View 6HR Volumes")
-    #scrollingFormLayout.addRow(self.view6hrButton)
+    self.renderButton = qt.QPushButton("Render")
+    scrollingFormLayout.addRow(self.renderButton)
     #self.view24hrButton = qt.QPushButton("View 24HR Volumes")
     #scrollingFormLayout.addRow(self.view24hrButton)
     #self.view32hrButton = qt.QPushButton("View 32HR Volumes")
@@ -208,7 +208,7 @@ class ColonicAnalysisWidget:
     self.parent.layout().addWidget(self.saveButton)
 
     # make connections
-    #self.view6hrButton.connect('clicked()', self.onView6hr)
+    self.renderButton.connect('clicked()', self.onRender)
     #self.view24hrButton.connect('clicked()', self.onView24hr)
     #self.view32hrButton.connect('clicked()', self.onView32hr)
     self.r6Button.connect('clicked()', self.onView6hr)
@@ -240,15 +240,18 @@ class ColonicAnalysisWidget:
     self.logic.setVolumeAttributes()
     self.logic.fixSpectLevel()
     self.changeView(self.logic.currentView)
+    
+  def onRender(self):
+    self.logic.renderView(self.logic.currentView, 'TH', 'threshold')
       
   def onView6hr(self):
-    self.changeView("6HR")
+    self.changeView("6HRS")
       
   def onView24hr(self):
-    self.changeView("24HR")
+    self.changeView("24HRS")
       
   def onView32hr(self):
-    self.changeView("32HR")
+    self.changeView("32HRS")
 
   def changeView(self, view):
     #print("changeView " + view)
@@ -256,20 +259,20 @@ class ColonicAnalysisWidget:
     self.logic.setViews(self.logic.currentView)
     self.slider.value = self.logic.colonData[self.logic.currentView]['Threshold']
     self.clearStats()
-    if not self.logic.renderView('LA', 'label'):
-      self.logic.renderView('TH', 'threshold')
+    #if not self.logic.renderView('LA', 'label'):
+    self.logic.renderView(self.logic.currentView, 'TH', 'threshold')
     
   def onViewSelect(self, node):
     print ("onViewSelect")
     if node == None:
       return
     name = node.GetName()
-    if name.find("6HR") != -1:
-      self.changeView("6HR")
-    if name.find("24HR") != -1:
-      self.changeView("24HR")
-    if name.find("32HR") != -1:
-      self.changeView("32HR")
+    if name.find("6HRS") != -1:
+      self.changeView("6HRS")
+    if name.find("24HRS") != -1:
+      self.changeView("24HRS")
+    if name.find("32HRS") != -1:
+      self.changeView("32HRS")
 
     
   def onCalcThreshold(self):
@@ -475,20 +478,20 @@ class ColonicAnalysisLogic:
         self.keys = ("Label", "Voxels", "Volume cc", "Total Counts", "SPECT Mean")
         self.colonRegions = ("precolon", "ascending_1", "ascending_2", "transverse_1", 
           "transverse_2", "transverse_3", "transverse_4", "neorectum", "stool")
-        self.timepoints = ("6HR", "24HR", "32HR")
+        self.timepoints = ("6HRS", "24HRS", "32HRS")
         self.thresholds = {'6HR': 0, '24HR': 0, '32HR': 0}
         self.colonData = {
-                      '6HR': {'Name': '6HR', 'Colour': 'Red', 'Threshold': 0, 
+                      '6HRS': {'Name': '6HRS', 'Colour': 'Red', 'Threshold': 0, 
                             'CT': {'Active': False, 'Name': None, 'ID': None},
                             'SP': {'Active': False, 'Name': None, 'ID': None}, 
                             'TH': {'Active': False, 'Name': None, 'ID': None},
                             'LA': {'Active': False, 'Name': None, 'ID': None}},
-                      '24HR': {'Name': '24HR', 'Colour': 'Green', 'Threshold': 0,
+                      '24HRS': {'Name': '24HRS', 'Colour': 'Green', 'Threshold': 0,
                             'CT': {'Active': False, 'Name': None, 'ID': None},
                             'SP': {'Active': False, 'Name': None, 'ID': None}, 
                             'TH': {'Active': False, 'Name': None, 'ID': None},
                             'LA': {'Active': False, 'Name': None, 'ID': None}},
-                      '32HR': {'Name': '32HR', 'Colour': 'Blue', 'Threshold': 0,
+                      '32HRS': {'Name': '32HRS', 'Colour': 'Blue', 'Threshold': 0,
                             'CT': {'Active': False, 'Name': None, 'ID': None},
                             'SP': {'Active': False, 'Name': None, 'ID': None}, 
                             'TH': {'Active': False, 'Name': None, 'ID': None},
@@ -500,6 +503,7 @@ class ColonicAnalysisLogic:
         self.computedMean = 0.0
         self.volumesLogic = slicer.modules.volumes.logic()
         self.hasColourtable = False
+        self.modulePath = '/home/markp/Projects/slicer/ColonTools/ColonicAnalysis/'
         pass
 
     def updateActiveVolumes(self):
@@ -524,7 +528,7 @@ class ColonicAnalysisLogic:
                 self.colonData[timePoint]['TH']['Name'] = nodeName
                 self.colonData[timePoint]['TH']['ID']= nodeID.GetID()
         if not self.colonData[timePoint]['CT']['Active'] and (not self.colonData[timePoint]['SP']['Active'] and not self.colonData[timePoint]['TH']['Active']):
-          print "%s: No CT or SPECT data!" % timePoint
+          print "%s: No CT or SPECT data" % timePoint
       
       
     def fixVolumes(self):
@@ -552,31 +556,6 @@ class ColonicAnalysisLogic:
       self.setSpectColours()
       self.setCTWindow()
       layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)     
-      #vNodes = slicer.util.getNodes(pattern="*_EM_*")
-      #for vNode in vNodes:
-        #volumeNode = vNodes[vNode]
-        #mymat = vtk.vtkMatrix4x4()
-        #(sx,sy,sz) = volumeNode.GetSpacing()
-        #sz = sx
-        #volumeNode.SetSpacing(sx,sy,sz)
-        #volumeNode.GetIJKToRASDirectionMatrix(mymat)
-        #mymat.SetElement(2,2,-1.0)
-        #volumeNode.SetIJKToRASDirectionMatrix(mymat)
-        #self.volumesLogic.CenterVolume(volumeNode)
-        #displayNode = volumeNode.GetDisplayNode()
-        #volumeName = volumeNode.GetName()
-        #if volumeName.find(self.timepoints[0]) != -1:
-            #displayNode.SetAndObserveColorNodeID("vtkMRMLColorTableNodeRed")
-        #if volumeName.find(self.timepoints[1]) != -1:
-            #displayNode.SetAndObserveColorNodeID("vtkMRMLColorTableNodeGreen")
-        #if volumeName.find(self.timepoints[2]) != -1:
-            #displayNode.SetAndObserveColorNodeID("vtkMRMLColorTableNodeBlue")
-      #vNodes = slicer.util.getNodes(pattern="*CTAC*")
-      #for vNode in vNodes:
-        #volumeNode = vNodes[vNode]
-        #displayNode = volumeNode.GetDisplayNode()
-        #displayNode.SetAutoWindowLevel(0)
-        #displayNode.SetWindowLevel(350.0, 40.0)
 
 
     def setSpectColours(self):
@@ -691,37 +670,33 @@ class ColonicAnalysisLogic:
       appLogic.PropagateVolumeSelection()
      
      
-    def renderView(self, vtype, vend):
-      #print ("renderView " + vtype)
-      if not self.colonData[self.currentView][vtype]['Active']:
+    def renderView(self, timePoint, vtype, vend):
+      print ("renderView " + vtype)
+      if not self.colonData[timePoint][vtype]['Active']:
         return False
-      #myNodes = self.getColonNodes(self.currentView)
-      #if myNodes[vtype] == None:
-        #return False
       volumesLogic = slicer.modules.volumes.logic()
       volumerenderlogic = slicer.modules.volumerendering.logic()
-      nodes = slicer.util.getNodes('*Render*')
       foundNode = False
-      for nodeName, nodeID in nodes.items():
-        #print ("Check " + nodeName)
-        if nodeID.GetVolumeNodeID() == 'NULL' or nodeID.GetVolumeNodeID() == None:
-          #print "Volume is Null"
-          break
-        volumeNode = slicer.util.getNode(nodeID.GetVolumeNodeID())
-        volumeName = volumeNode.GetName()
-        if volumeName.find(self.currentView) != -1 and volumeName.endswith(vend):
-          foundNode = True
-          displayNode = nodeID
-          break
-      if foundNode == False:
-        #print "Create new node"
-        volumeNode = slicer.util.getNode(self.colonData[self.currentView][vtype]['ID'])
+      #displayNode = None
+      displayNode = slicer.util.getNode('%s VolumeRendering-%s' % (timePoint, vend))
+      if displayNode == None:
+        print "Create new node"
+        volumeNode = slicer.util.getNode(self.colonData[timePoint][vtype]['ID'])
         displayNode = volumerenderlogic.CreateVolumeRenderingDisplayNode()
-        slicer.mrmlScene.AddNode(displayNode)
+        node = slicer.mrmlScene.AddNode(displayNode)
+        node.SetName('%s VolumeRendering-%s' % (timePoint, vend))
         displayNode.UnRegister(volumerenderlogic)
-      volumerenderlogic.UpdateDisplayNodeFromVolumeNode(displayNode, volumeNode)
+        volumerenderlogic.UpdateDisplayNodeFromVolumeNode(displayNode, volumeNode)
+        node.GetVolumePropertyNode().SetName('%s VolumeProperty-%s' % (timePoint, vend))
+        node.GetROINode().SetName('%s AnnotationROI-%s' % (timePoint, vend))
+        volumeNode.AddAndObserveDisplayNodeID(displayNode.GetID())
+      else:
+        volumeNode = slicer.util.getNode(displayNode.GetVolumeNodeID())
+        volumeName = volumeNode.GetName()
+        propertyNode = slicer.util.getNode('%s VolumeProperty-%s' % (timePoint, vend))
+        annotationNode = slicer.util.getNode('AnnotationROI')
+        volumerenderlogic.CopyDisplayToVolumeRenderingDisplayNode(displayNode, volumeNode.GetDisplayNode())
       displayNode.GetVolumePropertyNode().GetVolumeProperty().ShadeOff()
-      volumeNode.AddAndObserveDisplayNodeID(displayNode.GetID())
       return True
         
       
@@ -753,11 +728,14 @@ class ColonicAnalysisLogic:
         outputVolume = slicer.util.getNode(cvt['TH']['ID'])
       else:
         outputVolume = self.volumesLogic.CloneVolume(slicer.mrmlScene, volumeNode, volName+'-threshold')
+        self.updateActiveVolumes()
       #print("%3.0f, %3.0f" % (myLimits[9],myLimits[10]))
       return [maxVal, myLimits[9]]
         
     def applyThreshold(self, timePoint, thrsh):
         print "applyThreshold()"
+        if not self.colonData[timePoint]['TH']['Active']:
+          return
         parameters = {}
         self.colonData[timePoint]['Threshold'] = thrsh
         volumeNode = slicer.util.getNode(self.colonData[timePoint]['SP']['ID'])
@@ -815,7 +793,9 @@ class ColonicAnalysisLogic:
           self.labelStats[i,"Volume cc"] = "%2.3f" % (self.labelStats[i,"Voxels"] * cubicMMPerVoxel * ccPerCubicMM)
       #computedMean = 0.0
       for i in range(len(roiCounts)):
-          sm = (float(roiCounts[i])/float(self.totalCounts))*float(i)
+          sm = 0;
+          if self.totalCounts:
+            sm = (float(roiCounts[i])/float(self.totalCounts))*float(i)
           self.labelStats[i,"SPECT Mean"] = "%2.3f" % sm
           self.computedMean += sm
         
@@ -846,7 +826,7 @@ class ColonicAnalysisLogic:
       #print ("setupPaint()")
       timePoint = self.currentView
       if not self.hasColourtable:
-        self.hasColourtable = slicer.util.loadColorTable('/home/markp/Projects/slicer/ColonTools/ColonicAnalysis/ColonColors.txt')
+        self.hasColourtable = slicer.util.loadColorTable(self.modulePath+'ColonColors.txt')
         if not self.hasColourtable:
           print "Error: THe Colon Colour table has not loaded"
           return
