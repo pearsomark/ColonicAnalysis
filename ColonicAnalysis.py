@@ -96,7 +96,7 @@ class ColonicAnalysisWidget:
     # fix volumes button
     self.fixvolumesButton = qt.QPushButton("Fix Volumes")
     preprocessFormLayout.addRow(self.fixvolumesButton)
-    self.thresholdButton = qt.QPushButton("Calculate Threshold")
+    self.thresholdButton = qt.QPushButton("Calculate Thresholds")
     preprocessFormLayout.addRow(self.thresholdButton)
     # threshold scroller
     self.slider = ctk.ctkSliderWidget()
@@ -104,15 +104,15 @@ class ColonicAnalysisWidget:
     self.slider.enabled = False
     preprocessFormLayout.addRow("Threshold", self.slider)
     self.fixvolumesButton.connect('clicked()', self.onFixvolumes)
-    self.thresholdButton.connect('clicked()', self.onCalcThreshold)
+    self.thresholdButton.connect('clicked()', self.onCalcThresholds)
     preprocessCollapsibleButton.setChecked(False)
     # refresh button
     self.refreshButton = qt.QPushButton("Refresh")
     preprocessFormLayout.addRow(self.refreshButton)
     self.refreshButton.connect('clicked()', self.onTresholdRefresh)
-    self.editorButton = qt.QPushButton("Create Label")
+    self.editorButton = qt.QPushButton("Create Labels")
     preprocessFormLayout.addRow(self.editorButton)
-    self.editorButton.connect('clicked()', self.onEditor)
+    self.editorButton.connect('clicked()', self.onCreateLabels)
 
 
     #
@@ -162,23 +162,6 @@ class ColonicAnalysisWidget:
     #self.viewSelectorLabel.setToolTip( "Select the 6, 24 or 32 Hour data set")
     #self.viewSelectorFrame.layout().addWidget(self.viewSelectorLabel)
 
-    #self.viewSelector = slicer.qMRMLNodeComboBox(self.viewSelectorFrame)
-    #self.viewSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    ##self.viewSelector.nodeTypes = ( ("TOMO"), "" )
-    ##self.viewSelector.nodeFromIndex(2)
-    #self.viewSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
-    #self.viewSelector.addAttribute( "vtkMRMLScalarVolumeNode", "SelectView", 1 )
-    #self.viewSelector.selectNodeUponCreation = False
-    #self.viewSelector.addEnabled = False
-    #self.viewSelector.removeEnabled = False
-    #self.viewSelector.noneEnabled = True
-    #self.viewSelector.showHidden = False
-    #self.viewSelector.showChildNodeTypes = False
-    #self.viewSelector.setMRMLScene( slicer.mrmlScene )
-    ## TODO: need to add a QLabel
-    ## self.viewSelector.SetLabelText( "Master Volume:" )
-    #self.viewSelectorFrame.layout().addWidget(self.viewSelector)
-    
     
     
     self.renderButton = qt.QPushButton("Render")
@@ -257,7 +240,9 @@ class ColonicAnalysisWidget:
     #print("changeView " + view)
     self.logic.currentView = view
     self.logic.setViews(self.logic.currentView)
-    self.slider.value = self.logic.colonData[self.logic.currentView]['Threshold']
+    sMax, sThr = self.logic.getThreshold(self.logic.currentView)
+    self.slider.value = sThr
+    self.slider.maximum = sMax
     self.clearStats()
     #if not self.logic.renderView('LA', 'label'):
     self.logic.renderView(self.logic.currentView, 'TH', 'threshold')
@@ -275,16 +260,29 @@ class ColonicAnalysisWidget:
       self.changeView("32HRS")
 
     
-  def onCalcThreshold(self):
-    sMax, sThr = self.logic.calculateThreshold(self.logic.currentView)
+  #def onCalcThreshold(self):
+    #sMax, sThr = self.logic.calculateThreshold(self.logic.currentView)
+    #self.slider.maximum = sMax
+    #self.slider.value = sThr
+    #self.slider.enabled = True
+    #self.changeView(self.logic.currentView)
+    #self.logic.updateActiveVolumes()
+     
+  def onCalcThresholds(self):
+    active = self.logic.getActiveSpects()
+    for tp in active:
+      sThr = self.logic.calculateThreshold(tp)
+      self.logic.applyThreshold(tp, int(sThr))
+    sMax, sThr = self.logic.getThreshold(active[0])
     self.slider.maximum = sMax
     self.slider.value = sThr
     self.slider.enabled = True
-    self.changeView(self.logic.currentView)
+    self.changeView(active[0])
+    self.logic.currentView = active[0]
     self.logic.updateActiveVolumes()
      
   def onSliderValueChanged(self,value):
-      if self.logic.colonData[self.logic.currentView]['Threshold'] == 0 and value > 0:
+      if self.logic.colonData[self.logic.currentView]['Threshold']['val'] == 0 and value > 0:
         self.logic.applyThreshold(self.logic.currentView, int(value))
         self.logic.updateActiveVolumes()
         self.changeView(self.logic.currentView)
@@ -294,8 +292,10 @@ class ColonicAnalysisWidget:
       self.changeView(self.logic.currentView)
       
       
-  def onEditor(self):
-    self.logic.setupPaint()
+  def onCreateLabels(self):
+    active = self.logic.getActiveSpects()
+    for tp in active:
+      self.logic.setupPaint(tp)
      
   def onRefresh(self):
     volumeCount = self.logic.volumeCount()
@@ -481,17 +481,17 @@ class ColonicAnalysisLogic:
         self.timepoints = ("6HRS", "24HRS", "32HRS")
         self.thresholds = {'6HR': 0, '24HR': 0, '32HR': 0}
         self.colonData = {
-                      '6HRS': {'Name': '6HRS', 'Colour': 'Red', 'Threshold': 0, 
+                      '6HRS': {'Name': '6HRS', 'Colour': 'Red', 'Threshold': {'val': 0, 'max': 0},
                             'CT': {'Active': False, 'Name': None, 'ID': None},
                             'SP': {'Active': False, 'Name': None, 'ID': None}, 
                             'TH': {'Active': False, 'Name': None, 'ID': None},
                             'LA': {'Active': False, 'Name': None, 'ID': None}},
-                      '24HRS': {'Name': '24HRS', 'Colour': 'Green', 'Threshold': 0,
+                      '24HRS': {'Name': '24HRS', 'Colour': 'Green', 'Threshold': {'val': 0, 'max': 0},
                             'CT': {'Active': False, 'Name': None, 'ID': None},
                             'SP': {'Active': False, 'Name': None, 'ID': None}, 
                             'TH': {'Active': False, 'Name': None, 'ID': None},
                             'LA': {'Active': False, 'Name': None, 'ID': None}},
-                      '32HRS': {'Name': '32HRS', 'Colour': 'Blue', 'Threshold': 0,
+                      '32HRS': {'Name': '32HRS', 'Colour': 'Blue', 'Threshold': {'val': 0, 'max': 0},
                             'CT': {'Active': False, 'Name': None, 'ID': None},
                             'SP': {'Active': False, 'Name': None, 'ID': None}, 
                             'TH': {'Active': False, 'Name': None, 'ID': None},
@@ -507,7 +507,7 @@ class ColonicAnalysisLogic:
         pass
 
     def updateActiveVolumes(self):
-      print ("updateActiveVolumes()")
+      #print ("updateActiveVolumes()")
       for timePoint in self.colonData:
         nodes = slicer.util.getNodes('*%s*' % timePoint)
         for nodeName, nodeID in nodes.items():
@@ -523,13 +523,19 @@ class ColonicAnalysisLogic:
                 self.colonData[timePoint]['LA']['Active'] = True
                 self.colonData[timePoint]['LA']['Name'] = nodeName
                 self.colonData[timePoint]['LA']['ID']= nodeID.GetID()
-            if nodeName.endswith("threshold"):
+            if nodeName.endswith("Transaxials-threshold"):
                 self.colonData[timePoint]['TH']['Active'] = True
                 self.colonData[timePoint]['TH']['Name'] = nodeName
                 self.colonData[timePoint]['TH']['ID']= nodeID.GetID()
         if not self.colonData[timePoint]['CT']['Active'] and (not self.colonData[timePoint]['SP']['Active'] and not self.colonData[timePoint]['TH']['Active']):
           print "%s: No CT or SPECT data" % timePoint
-      
+     
+    def getActiveSpects(self):
+      tPoints = []
+      for tp in self.timepoints:
+        if self.colonData[tp]['SP']['Active']:
+          tPoints.append(tp)
+      return tPoints
       
     def fixVolumes(self):
       """ The current DICOM import does not load the z spacing correctly for SPECT images.
@@ -636,7 +642,7 @@ class ColonicAnalysisLogic:
       """ Set the CT, SPECT and Label volumes in R,Y,G views for timePoint.
           If CT is not available set SPECT as background.
       """
-      print ("setViews() " + timePoint)
+      #print ("setViews() " + timePoint)
       setActive = False
       setSecondary = False
       setLabel = False
@@ -671,7 +677,7 @@ class ColonicAnalysisLogic:
      
      
     def renderView(self, timePoint, vtype, vend):
-      print ("renderView " + vtype)
+      #print ("renderView " + vtype)
       if not self.colonData[timePoint][vtype]['Active']:
         return False
       volumesLogic = slicer.modules.volumes.logic()
@@ -715,29 +721,33 @@ class ColonicAnalysisLogic:
         if colonNodes['CT'] == None and (colonNodes['SPECT'] == None and colonNodes['THRESHOLD'] == None):
             print "No CT or SPECT data!"
         return colonNodes
+        
 
     def calculateThreshold(self, timePoint):
-      print "calculateThreshold()"
-      cvt = self.colonData[self.currentView]
+      """ Calculate a threshold value to remove background from SPECT.
+      """
+      print "calculateThreshold(%s)" % timePoint
+      cvt = self.colonData[timePoint]
       arrayv = slicer.util.array(cvt['SP']['ID'])
       volumeNode = slicer.util.getNode(cvt['SP']['ID'])
-      maxVal = arrayv.max()
+      cvt['Threshold']['max'] = arrayv.max()
       myVals, myLimits = np.histogram(arrayv, bins = 100)
+      cvt['Threshold']['val'] = myLimits[9]
+      print("%d, %d" % (cvt['Threshold']['val'], cvt['Threshold']['max']))
       volName = cvt['SP']['Name']
       if cvt['TH']['Active']:
         outputVolume = slicer.util.getNode(cvt['TH']['ID'])
       else:
         outputVolume = self.volumesLogic.CloneVolume(slicer.mrmlScene, volumeNode, volName+'-threshold')
         self.updateActiveVolumes()
-      #print("%3.0f, %3.0f" % (myLimits[9],myLimits[10]))
-      return [maxVal, myLimits[9]]
+      return cvt['Threshold']['val']
         
     def applyThreshold(self, timePoint, thrsh):
-        print "applyThreshold()"
+        #print "applyThreshold(%s)" % timePoint
         if not self.colonData[timePoint]['TH']['Active']:
           return
         parameters = {}
-        self.colonData[timePoint]['Threshold'] = thrsh
+        self.colonData[timePoint]['Threshold']['val'] = thrsh
         volumeNode = slicer.util.getNode(self.colonData[timePoint]['SP']['ID'])
         outputVolume = slicer.util.getNode(self.colonData[timePoint]['TH']['ID'])
         if not (volumeNode and outputVolume):
@@ -753,16 +763,20 @@ class ColonicAnalysisLogic:
         slicer.cli.run(slicer.modules.thresholdscalarvolume, None, parameters, wait_for_completion=True)
         return
         
+    def getThreshold(self, timepoint):
+      return [self.colonData[timepoint]['Threshold']['max'], self.colonData[timepoint]['Threshold']['val']]
+      
+      
     def volumeCount(self):
         return len(slicer.util.getNodes('vtkMRML*VolumeNode*'))
 
     def selectVolume(self,index):
-        nodes = slicer.util.getNodes('vtkMRML*VolumeNode*')
-        names = nodes.keys()
-        names.sort()
-        selectionNode = slicer.app.applicationLogic().GetSelectionNode()
-        selectionNode.SetReferenceActiveVolumeID( nodes[names[index]].GetID() )
-        slicer.app.applicationLogic().PropagateVolumeSelection(0)
+      nodes = slicer.util.getNodes('vtkMRML*VolumeNode*')
+      names = nodes.keys()
+      names.sort()
+      selectionNode = slicer.app.applicationLogic().GetSelectionNode()
+      selectionNode.SetReferenceActiveVolumeID( nodes[names[index]].GetID() )
+      slicer.app.applicationLogic().PropagateVolumeSelection(0)
         
     def computeMean(self, timePoint):
       cvt = self.colonData[self.currentView]
@@ -822,9 +836,8 @@ class ColonicAnalysisLogic:
       fp.write(self.statsAsCSV())
       fp.close()
       
-    def setupPaint(self):
+    def setupPaint(self, timePoint):
       #print ("setupPaint()")
-      timePoint = self.currentView
       if not self.hasColourtable:
         self.hasColourtable = slicer.util.loadColorTable(self.modulePath+'ColonColors.txt')
         if not self.hasColourtable:
