@@ -193,13 +193,6 @@ class ColonicAnalysisWidget:
 
     
     
-    #self.renderButton = qt.QPushButton("Render")
-    #scrollingFormLayout.addRow(self.renderButton)
-    #self.view24hrButton = qt.QPushButton("View 24HR Volumes")
-    #scrollingFormLayout.addRow(self.view24hrButton)
-    #self.view32hrButton = qt.QPushButton("View 32HR Volumes")
-    #scrollingFormLayout.addRow(self.view32hrButton)
-
     # Stats button
     self.statsButton = qt.QPushButton("Stats")
     self.statsButton.toolTip = "Calculate Statistics."
@@ -220,9 +213,6 @@ class ColonicAnalysisWidget:
     self.parent.layout().addWidget(self.saveButton)
 
     # make connections
-    #self.renderButton.connect('clicked()', self.onRender)
-    #self.view24hrButton.connect('clicked()', self.onView24hr)
-    #self.view32hrButton.connect('clicked()', self.onView32hr)
     self.statsButton.connect('clicked()', self.onStats)
     self.saveButton.connect('clicked()', self.onSave)
     self.refreshButton.connect('clicked()', self.onRefresh)
@@ -311,6 +301,7 @@ class ColonicAnalysisWidget:
     self.changeView(active[0])
     self.logic.currentView = active[0]
     self.logic.updateActiveVolumes()
+    self.thresholdButton.enabled = False
      
   def onSliderValueChanged(self,value):
       if self.logic.colonData[self.logic.currentView]['Threshold']['val'] == 0 and value > 0:
@@ -327,11 +318,10 @@ class ColonicAnalysisWidget:
     active = self.logic.getActiveSpects()
     for tp in active:
       self.logic.setupPaint(tp)
+    self.editorButton.enabled = False
      
   def onRefresh(self):
     volumeCount = self.logic.volumeCount()
-    #self.slider.enabled = volumeCount > 0
-    #self.slider.maximum = volumeCount-1
 
   def volumesAreValid(self, timepoint):
     """Verify that the SPECT and label volumes exist for timepoint"""
