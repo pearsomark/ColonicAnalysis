@@ -4,6 +4,7 @@ from __main__ import vtk, qt, ctk, slicer
 import numpy as np
 import numpy.ma as ma
 
+
 #
 # ColonicAnalysis
 #
@@ -13,9 +14,9 @@ class ColonicAnalysis:
     parent.title = "ColonicAnalysis" # TODO make this more human readable by adding spaces
     parent.categories = ["Examples"]
     parent.dependencies = []
-    parent.contributors = ["Jean-Christophe Fillion-Robin (Kitware), Steve Pieper (Isomics)"] # replace with "Firstname Lastname (Org)"
+    parent.contributors = ["Mark Pearson (CRGH)"] # replace with "Firstname Lastname (Org)"
     parent.helpText = """
-    This is an example of scripted loadable module bundled in an extension.
+    This is a scripted loadable module for analysing Colonic Transit studies.
     """
     parent.acknowledgementText = """
     This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc. and Steve Pieper, Isomics, Inc.  and was partially funded by NIH grant 3P41RR013218-12S1.
@@ -23,7 +24,11 @@ class ColonicAnalysis:
 """ # replace with organization, grant and thanks.
     self.parent = parent
 
-    parent.icon = qt.QIcon("/home/markp/Projects/slicer/ColonTools/ColonicAnalysis/Resources/Icons/Colon128.png")
+    import inspect
+    modName = inspect.getframeinfo(inspect.currentframe())[0]
+    lsep = modName.rindex('/')
+    self.modPath = modName[0:lsep]
+    parent.icon = qt.QIcon(self.modPath + '/Resources/Icons/Colon128.png')
     # Add this test to the SelfTest module's list for discovery when the module
     # is created.  Since this module may be discovered before SelfTests itself,
     # create the list if it doesn't already exist.
@@ -37,6 +42,7 @@ class ColonicAnalysis:
     tester = ColonicAnalysisTest()
     tester.runTest()
 
+    
 #
 # qColonicAnalysisWidget
 #
@@ -503,7 +509,11 @@ class ColonicAnalysisLogic:
         self.computedMean = 0.0
         self.volumesLogic = slicer.modules.volumes.logic()
         self.hasColourtable = False
-        self.modulePath = '/home/markp/Projects/slicer/ColonTools/ColonicAnalysis/'
+        #self.modulePath = '/home/markp/Projects/slicer/ColonTools/ColonicAnalysis/'
+        #self.modulePath = '/Volumes/Seagate Backup Plus Drive/Colonic/ColonTools/ColonicAnalysis/'
+        modName = slicer.modules.colonicanalysis.path
+        lsep = modName.rindex('/')
+        self.modulePath = modName[0:lsep]
         pass
 
     def updateActiveVolumes(self):
@@ -536,6 +546,7 @@ class ColonicAnalysisLogic:
         if self.colonData[tp]['SP']['Active']:
           tPoints.append(tp)
       return tPoints
+      
       
     def fixVolumes(self):
       """ The current DICOM import does not load the z spacing correctly for SPECT images.
@@ -603,7 +614,7 @@ class ColonicAnalysisLogic:
             displayNode.SetAutoWindowLevel(0)
             displayNode.SetLevel(window/2.0)
         
-      
+     
     def setVolumeAttributes(self):
       nodes = slicer.util.getNodes('*HR*')
       for nodeName, nodeID in nodes.items():
@@ -837,9 +848,9 @@ class ColonicAnalysisLogic:
       fp.close()
       
     def setupPaint(self, timePoint):
-      #print ("setupPaint()")
+      print ("setupPaint()")
       if not self.hasColourtable:
-        self.hasColourtable = slicer.util.loadColorTable(self.modulePath+'ColonColors.txt')
+        self.hasColourtable = slicer.util.loadColorTable(self.modulePath+'/ColonColors.txt')
         if not self.hasColourtable:
           print "Error: THe Colon Colour table has not loaded"
           return
