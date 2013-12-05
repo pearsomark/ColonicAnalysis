@@ -52,6 +52,7 @@ class ColonicAnalysisWidget:
     self.chartOptions = ("Count", "Total", "Volume cc", "Min", "Max", "Mean")
     self.fileName = None
     self.fileDialog = None
+    self.renderType = ('TH', 'threshold')
     if not parent:
       self.parent = slicer.qMRMLWidget()
       self.parent.setLayout(qt.QVBoxLayout())
@@ -134,31 +135,53 @@ class ColonicAnalysisWidget:
     # make an instance of the logic for use by the slots
     self.logic = ColonicAnalysisLogic()
 
+    self.radioButtonsFrame = qt.QFrame(self.parent)
+    self.radioButtonsFrame.setLayout(qt.QHBoxLayout())
+    scrollingFormLayout.addWidget(self.radioButtonsFrame)
+    
     self.viewRadioFrame = qt.QFrame(self.parent)
     self.viewRadioFrame.setLayout(qt.QVBoxLayout())
-    scrollingFormLayout.addWidget(self.viewRadioFrame)
+    self.radioButtonsFrame.layout().addWidget(self.viewRadioFrame)
     
-    self.viewRadioLabel = qt.QLabel("Select View: ", self.viewRadioFrame)
+    self.viewRadioLabel = qt.QLabel("Change View: ", self.viewRadioFrame)
     self.viewRadioLabel.setToolTip( "Select the 6, 24 or 32 Hour data set")
     self.viewRadioFrame.layout().addWidget(self.viewRadioLabel)
 
     #self.radioSubFrame = qt.QFrame(self.viewRadioFrame)
     #self.selectLayout = qt.QGridLayout()
     #self.radioSubFrame.setLayout(self.selectLayout)
-    self.r6Button = qt.QRadioButton("6 Hours", self.viewRadioFrame)
-    self.r24Button = qt.QRadioButton("24 Hours", self.viewRadioFrame)
-    self.r32Button = qt.QRadioButton("32 Hours", self.viewRadioFrame)
-    self.r6Button.checked = True
-    self.viewRadioFrame.layout().addWidget(self.r6Button, 1, 0)
-    self.viewRadioFrame.layout().addWidget(self.r24Button, 0, 0)
-    self.viewRadioFrame.layout().addWidget(self.r32Button, 0, 0)
+    self.r6HRSButton = qt.QRadioButton("6 Hours", self.viewRadioFrame)
+    self.r24HRSButton = qt.QRadioButton("24 Hours", self.viewRadioFrame)
+    self.r32HRSButton = qt.QRadioButton("32 Hours", self.viewRadioFrame)
+    self.r6HRSButton.checked = True
+    self.viewRadioFrame.layout().addWidget(self.r6HRSButton, 1, 0)
+    self.viewRadioFrame.layout().addWidget(self.r24HRSButton, 0, 0)
+    self.viewRadioFrame.layout().addWidget(self.r32HRSButton, 0, 0)
+    self.r6HRSButton.connect('clicked()', self.onView6hr)
+    self.r24HRSButton.connect('clicked()', self.onView24hr)
+    self.r32HRSButton.connect('clicked()', self.onView32hr)
     
+
+    self.renderRadioFrame = qt.QFrame(self.parent)
+    self.renderRadioFrame.setLayout(qt.QVBoxLayout())
+    self.radioButtonsFrame.layout().addWidget(self.renderRadioFrame)
+    self.renderRadioLabel = qt.QLabel("Select volume to render: ", self.renderRadioFrame)
+    self.renderRadioLabel.setToolTip( "Select Transaxial or Label volume")
+    self.renderRadioFrame.layout().addWidget(self.renderRadioLabel)
+    self.rThrshButton = qt.QRadioButton("Threshold", self.renderRadioFrame)
+    self.rLabelButton = qt.QRadioButton("Label", self.renderRadioFrame)
+    self.rThrshButton.checked = True
+    self.renderRadioFrame.layout().addWidget(self.rThrshButton, 1, 0)
+    self.renderRadioFrame.layout().addWidget(self.rLabelButton, 0, 0)
+    self.rThrshButton.connect('clicked()', self.onThrshRender)
+    self.rLabelButton.connect('clicked()', self.onLabelRender)
 
     #
     # the view selector
     #
     self.logic.setVolumeAttributes()
     self.logic.updateActiveVolumes()
+    self.updateActiveViews()
     #self.viewSelectorFrame = qt.QFrame(self.parent)
     #self.viewSelectorFrame.setLayout(qt.QHBoxLayout())
     ##self.parent.layout().addWidget(self.viewSelectorFrame)
@@ -170,8 +193,8 @@ class ColonicAnalysisWidget:
 
     
     
-    self.renderButton = qt.QPushButton("Render")
-    scrollingFormLayout.addRow(self.renderButton)
+    #self.renderButton = qt.QPushButton("Render")
+    #scrollingFormLayout.addRow(self.renderButton)
     #self.view24hrButton = qt.QPushButton("View 24HR Volumes")
     #scrollingFormLayout.addRow(self.view24hrButton)
     #self.view32hrButton = qt.QPushButton("View 32HR Volumes")
@@ -197,12 +220,9 @@ class ColonicAnalysisWidget:
     self.parent.layout().addWidget(self.saveButton)
 
     # make connections
-    self.renderButton.connect('clicked()', self.onRender)
+    #self.renderButton.connect('clicked()', self.onRender)
     #self.view24hrButton.connect('clicked()', self.onView24hr)
     #self.view32hrButton.connect('clicked()', self.onView32hr)
-    self.r6Button.connect('clicked()', self.onView6hr)
-    self.r24Button.connect('clicked()', self.onView24hr)
-    self.r32Button.connect('clicked()', self.onView32hr)
     self.statsButton.connect('clicked()', self.onStats)
     self.saveButton.connect('clicked()', self.onSave)
     self.refreshButton.connect('clicked()', self.onRefresh)
@@ -216,20 +236,27 @@ class ColonicAnalysisWidget:
     # Add vertical spacer
     self.layout.addStretch(1)
 
-  #def onSliderValueChanged(self,value):
-    #self.logic.selectVolume(int(value))
+  def updateActiveViews(self):
+    self.r6HRSButton.enabled = False
+    self.r24HRSButton.enabled = False
+    self.r32HRSButton.enabled = False
+    for view in self.logic.getActiveSpects():
+      if view == '6HRS':
+        self.r6HRSButton.enabled = True
+      if view == '24HRS':
+        self.r24HRSButton.enabled = True
+      if view == '32HRS':
+        self.r32HRSButton.enabled = True
+      
 
   def onFixvolumes(self):
     self.logic.fixVolumes()
-    nodes = self.logic.getColonNodes("32HR")
-    if nodes['SPECT'] == None:
-        self.r32Button.enabled = False
-    else:
-        self.r32Button.enabled = True
     self.logic.setVolumeAttributes()
     self.logic.fixSpectLevel()
     self.changeView(self.logic.currentView)
-    
+    self.fixvolumesButton.enabled = False
+    self.updateActiveViews()
+
   def onRender(self):
     self.logic.renderView(self.logic.currentView, 'TH', 'threshold')
       
@@ -250,8 +277,9 @@ class ColonicAnalysisWidget:
     self.slider.value = sThr
     self.slider.maximum = sMax
     self.clearStats()
+    
     #if not self.logic.renderView('LA', 'label'):
-    self.logic.renderView(self.logic.currentView, 'TH', 'threshold')
+    self.logic.renderView(self.logic.currentView, self.renderType[0], self.renderType[1])
     
   def onViewSelect(self, node):
     print ("onViewSelect")
@@ -265,15 +293,12 @@ class ColonicAnalysisWidget:
     if name.find("32HRS") != -1:
       self.changeView("32HRS")
 
+  def onThrshRender(self):
+    self.renderType = ('TH', 'threshold')
     
-  #def onCalcThreshold(self):
-    #sMax, sThr = self.logic.calculateThreshold(self.logic.currentView)
-    #self.slider.maximum = sMax
-    #self.slider.value = sThr
-    #self.slider.enabled = True
-    #self.changeView(self.logic.currentView)
-    #self.logic.updateActiveVolumes()
-     
+  def onLabelRender(self):
+    self.renderType = ('LA', 'label')
+    
   def onCalcThresholds(self):
     active = self.logic.getActiveSpects()
     for tp in active:
@@ -546,7 +571,9 @@ class ColonicAnalysisLogic:
         if self.colonData[tp]['SP']['Active']:
           tPoints.append(tp)
       return tPoints
-      
+
+    def getViews(self):
+      return self.timepoints
       
     def fixVolumes(self):
       """ The current DICOM import does not load the z spacing correctly for SPECT images.
