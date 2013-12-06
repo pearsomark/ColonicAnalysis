@@ -217,7 +217,6 @@ class ColonicAnalysisWidget:
     self.saveButton.connect('clicked()', self.onSave)
     self.refreshButton.connect('clicked()', self.onRefresh)
     self.slider.connect('valueChanged(double)', self.onSliderValueChanged)
-    #self.viewSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onViewSelect)
 
 
     # call refresh the slider to set it's initial state
@@ -243,12 +242,12 @@ class ColonicAnalysisWidget:
     self.logic.fixVolumes()
     self.logic.setVolumeAttributes()
     self.logic.fixSpectLevel()
-    self.changeView(self.logic.currentView)
+    self.changeView(self.logic.getCurrentView())
     self.fixvolumesButton.enabled = False
     self.updateActiveViews()
 
   def onRender(self):
-    self.logic.renderView(self.logic.currentView, 'TH', 'threshold')
+    self.logic.renderView(self.logic.getCurrentView(), 'TH', 'threshold')
       
   def onView6hr(self):
     self.changeView("6HRS")
@@ -261,28 +260,15 @@ class ColonicAnalysisWidget:
 
   def changeView(self, view):
     #print("changeView " + view)
-    self.logic.currentView = view
-    self.logic.setViews(self.logic.currentView)
-    sMax, sThr = self.logic.getThreshold(self.logic.currentView)
-    self.slider.value = sThr
-    self.slider.maximum = sMax
+    self.logic.setCurrentView(view)
+    self.logic.setViews(view)
+    #sThr, sMax = self.logic.getThreshold(self.logic.getCurrentView())
+    self.slider.value = self.logic.getThreshold(view)
+    self.slider.maximum = self.logic.getThresholdMax(view)
     self.clearStats()
-    
     #if not self.logic.renderView('LA', 'label'):
-    self.logic.renderView(self.logic.currentView, self.renderType[0], self.renderType[1])
+    self.logic.renderView(self.logic.getCurrentView(), self.renderType[0], self.renderType[1])
     
-  def onViewSelect(self, node):
-    print ("onViewSelect")
-    if node == None:
-      return
-    name = node.GetName()
-    if name.find("6HRS") != -1:
-      self.changeView("6HRS")
-    if name.find("24HRS") != -1:
-      self.changeView("24HRS")
-    if name.find("32HRS") != -1:
-      self.changeView("32HRS")
-
   def onThrshRender(self):
     self.renderType = ('TH', 'threshold')
     
@@ -294,24 +280,25 @@ class ColonicAnalysisWidget:
     for tp in active:
       sThr = self.logic.calculateThreshold(tp)
       self.logic.applyThreshold(tp, int(sThr))
-    sMax, sThr = self.logic.getThreshold(active[0])
-    self.slider.maximum = sMax
-    self.slider.value = sThr
+    #sThr, sMax = self.logic.getThreshold(active[0])
+    self.slider.maximum = self.logic.getThresholdMax(active[0])
+    self.slider.value = self.logic.getThreshold(active[0])
     self.slider.enabled = True
+    self.logic.setCurrentView(active[0])
     self.changeView(active[0])
-    self.logic.currentView = active[0]
     self.logic.updateActiveVolumes()
     self.thresholdButton.enabled = False
      
   def onSliderValueChanged(self,value):
-      if self.logic.colonData[self.logic.currentView]['Threshold']['val'] == 0 and value > 0:
-        self.logic.applyThreshold(self.logic.currentView, int(value))
-        self.logic.updateActiveVolumes()
-        self.changeView(self.logic.currentView)
+    current = self.logic.getCurrentView()
+    if self.logic.getThreshold(current) == 0 and value > 0:
+      self.logic.applyThreshold(current, int(value))
+      self.logic.updateActiveVolumes()
+      self.changeView(current)
 
   def onTresholdRefresh(self):
-      self.logic.applyThreshold(self.logic.currentView, self.slider.value)
-      self.changeView(self.logic.currentView)
+      self.logic.applyThreshold(self.logic.getCurrentView(), self.slider.value)
+      self.changeView(self.logic.getCurrentView())
       
       
   def onCreateLabels(self):
@@ -332,7 +319,7 @@ class ColonicAnalysisWidget:
   def onStats(self):
     """Calculate the label statistics
     """
-    if not self.volumesAreValid(self.logic.currentView):
+    if not self.volumesAreValid(self.logic.getCurrentView()):
       qt.QMessageBox.warning(slicer.util.mainWindow(),
           "Label Statistics", "Either the SPECT or Label volume does not exist.")
       return
@@ -371,14 +358,14 @@ class ColonicAnalysisWidget:
   def populateStats(self):
     if not self.logic:
       return
-    labelvol = slicer.util.getNode(self.logic.colonData[self.logic.currentView]['LA']['ID'])
-    #self.nodes = self.logic.getColonNodes(self.logic.currentView)
+    labelvol = slicer.util.getNode(self.logic.colonData[self.logic.getCurrentView()]['LA']['ID'])
+    #self.nodes = self.logic.getColonNodes(self.logic.getCurrentView())
     #labelvol = slicer.util.getNode(self.nodes['LABEL'])
     displayNode = labelvol.GetDisplayNode()
     colorNode = displayNode.GetColorNode()
     lut = colorNode.GetLookupTable()
     numLabels = colorNode.GetNumberOfColors()
-    self.logic.computeMean(self.logic.currentView)
+    self.logic.computeMean(self.logic.getCurrentView())
     self.items = []
     self.model = qt.QStandardItemModel()
     self.view.setModel(self.model)
@@ -500,7 +487,6 @@ class ColonicAnalysisLogic:
         self.colonRegions = ("precolon", "ascending_1", "ascending_2", "transverse_1", 
           "transverse_2", "transverse_3", "transverse_4", "neorectum", "stool")
         self.timepoints = ("6HRS", "24HRS", "32HRS")
-        self.thresholds = {'6HR': 0, '24HR': 0, '32HR': 0}
         self.colonData = {
                       '6HRS': {'Name': '6HRS', 'Colour': 'Red', 'Threshold': {'val': 0, 'max': 0},
                             'CT': {'Active': False, 'Name': None, 'ID': None},
@@ -565,6 +551,12 @@ class ColonicAnalysisLogic:
     def getViews(self):
       return self.timepoints
       
+    def getCurrentView(self):
+      return self.currentView
+      
+    def setCurrentView(self, view):
+      self.currentView = view
+      
     def fixVolumes(self):
       """ The current DICOM import does not load the z spacing correctly for SPECT images.
           This function copies x size to z size and also corrects an orientation issue.
@@ -573,7 +565,7 @@ class ColonicAnalysisLogic:
       self.labelStats = {}
       self.labelStats['Labels'] = []
       self.totalCounts = 0
-      self.currentView = self.timepoints[0]
+      self.currentView = self.getActiveSpects()[0]
       self.computedMean = 0.0
       layoutManager = slicer.app.layoutManager()
       for timePoint in self.colonData:
@@ -792,7 +784,10 @@ class ColonicAnalysisLogic:
         return
         
     def getThreshold(self, timepoint):
-      return [self.colonData[timepoint]['Threshold']['max'], self.colonData[timepoint]['Threshold']['val']]
+      return self.colonData[timepoint]['Threshold']['val']
+      
+    def getThresholdMax(self, timepoint):
+      return self.colonData[timepoint]['Threshold']['max']
       
       
     def volumeCount(self):
