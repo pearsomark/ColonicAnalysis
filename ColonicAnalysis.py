@@ -2,7 +2,6 @@ import os
 import unittest
 from __main__ import vtk, qt, ctk, slicer
 import numpy as np
-import numpy.ma as ma
 
 
 #
@@ -29,6 +28,10 @@ class ColonicAnalysis:
     lsep = modName.rindex('/')
     self.modPath = modName[0:lsep]
     parent.icon = qt.QIcon(self.modPath + '/Resources/Icons/Colon128.png')
+
+    if slicer.mrmlScene.GetTagByClassName( "vtkMRMLScriptedModuleNode" ) != 'ScriptedModule':
+      slicer.mrmlScene.RegisterNodeClass(vtkMRMLScriptedModuleNode())
+
     # Add this test to the SelfTest module's list for discovery when the module
     # is created.  Since this module may be discovered before SelfTests itself,
     # create the list if it doesn't already exist.
@@ -42,17 +45,20 @@ class ColonicAnalysis:
     tester = ColonicAnalysisTest()
     tester.runTest()
 
-    
 #
 # qColonicAnalysisWidget
 #
 
+#class colonicUtil(object):
+
+
+
 class ColonicAnalysisWidget:
   def __init__(self, parent = None):
-    self.chartOptions = ("Count", "Total", "Volume cc", "Min", "Max", "Mean")
     self.fileName = None
     self.fileDialog = None
     self.renderType = ('TH', 'threshold')
+    self.parameterNode = None
     if not parent:
       self.parent = slicer.qMRMLWidget()
       self.parent.setLayout(qt.QVBoxLayout())
@@ -63,6 +69,8 @@ class ColonicAnalysisWidget:
     if not parent:
       self.setup()
       self.parent.show()
+    self.updateParameterNode(self.parameterNode, vtk.vtkCommand.ModifiedEvent)
+    self.setMRMLDefaults()
 
   def setup(self):
     # Instantiate and connect widgets ...
@@ -224,6 +232,79 @@ class ColonicAnalysisWidget:
 
     # Add vertical spacer
     self.layout.addStretch(1)
+
+  def getParameterNode(self):
+    """Get the ColonicAnalysis parameter node - a singleton in the scene"""
+    node = self._findParameterNodeInScene()
+    if not node:
+      node = self._createParameterNode()
+    return node
+
+  def _findParameterNodeInScene(self):
+    node = None
+    size =  slicer.mrmlScene.GetNumberOfNodesByClass("vtkMRMLScriptedModuleNode")
+    for i in xrange(size):
+      n  = slicer.mrmlScene.GetNthNodeByClass( i, "vtkMRMLScriptedModuleNode" )
+      if n.GetModuleName() == "ColonicAnalysis":
+        node = n
+    return node
+
+  def _createParameterNode(self):
+    """create the ColonicAnalysis parameter node - a singleton in the scene
+    This is used internally by getParameterNode - shouldn't really
+    be called for any other reason.
+    """
+    node = slicer.vtkMRMLScriptedModuleNode()
+    node.SetSingletonTag( "ColonicAnalysis" )
+    node.SetModuleName( "ColonicAnalysis" )
+    node.SetParameter( "view", "6HRS" )
+    slicer.mrmlScene.AddNode(node)
+    # Since we are a singleton, the scene won't add our node into the scene,
+    # but will instead insert a copy, so we find that and return it
+    node = self._findParameterNodeInScene()
+    return node
+
+  # note: this method needs to be implemented exactly as-is
+  # in each leaf subclass so that "self" in the observer
+  # is of the correct type
+  def updateParameterNode(self, caller, event):
+    node = self.getParameterNode()
+    if node != self.parameterNode:
+      if self.parameterNode:
+        node.RemoveObserver(self.parameterNodeTag)
+      self.parameterNode = node
+      self.parameterNodeTag = node.AddObserver(vtk.vtkCommand.ModifiedEvent, self.updateGUIFromMRML)
+
+  def setMRMLDefaults(self):
+    print("setMRMLDefaults()")
+    disableState = self.parameterNode.GetDisableModifiedEvent()
+    self.parameterNode.SetDisableModifiedEvent(1)
+    defaults = (
+      ("timepoints", "6HRS 24HRS 32HRS"),
+      ("SummaryKeys", '"Label", "Voxels", "Volume cc", "Total Counts", "SPECT Mean"'),
+      ("thresholds", '0 10 0'),
+    )
+    for d in defaults:
+      param = "ColonicAnalysis,"+d[0]
+      pvalue = self.parameterNode.GetParameter(param)
+      if pvalue == '':
+        self.parameterNode.SetParameter(param, d[1])
+    self.parameterNode.SetDisableModifiedEvent(disableState)
+    
+  def updateGUIFromMRML(self,caller,event):
+    print("updateGUIFromMRML()")
+    params = ("timepoints", "thresholds",)
+    for p in params:
+      if self.parameterNode.GetParameter("ColonicAnalysis,"+p) == '':
+        # don't update if the parameter node has not got all values yet
+        return
+    #self.disconnectWidgets()
+    #self.toleranceSpinBox.setValue( float(self.parameterNode.GetParameter("WandEffect,tolerance")) )
+    #self.maxPixelsSpinBox.setValue( float(self.parameterNode.GetParameter("WandEffect,maxPixels")) )
+    #self.fillModeCheckBox.checked = self.parameterNode.GetParameter("WandEffect,fillMode") == "Volume"
+    #self.toleranceFrame.setHidden( self.thresholdPaint.checked )
+    #self.connectWidgets()
+
 
   def updateActiveViews(self):
     self.r6HRSButton.enabled = False
@@ -802,6 +883,7 @@ class ColonicAnalysisLogic:
       slicer.app.applicationLogic().PropagateVolumeSelection(0)
         
     def computeMean(self, timePoint):
+      import numpy.ma as ma
       cvt = self.colonData[self.currentView]
       arrayv = slicer.util.array(cvt['SP']['ID'])
       arrayl = slicer.util.array(cvt['LA']['ID'])
