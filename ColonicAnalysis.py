@@ -281,7 +281,7 @@ class ColonicAnalysisWidget:
     self.parameterNode.SetDisableModifiedEvent(1)
     defaults = (
       ("timepoints", "6HRS 24HRS 32HRS"),
-      ("SummaryKeys", '"Label", "Voxels", "Volume cc", "Total Counts", "SPECT Mean"'),
+      #("SummaryKeys", '"Label", "Voxels", "Volume cc", "Total Counts", "SPECT Mean"'),
       ("thresholds", '0 10 0'),
     )
     for d in defaults:
