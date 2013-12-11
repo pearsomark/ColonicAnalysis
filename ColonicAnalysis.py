@@ -352,9 +352,11 @@ class ColonicAnalysisWidget:
     
   def onThrshRender(self):
     self.renderType = ('TH', 'threshold')
+    self.changeView(self.logic.getCurrentView())
     
   def onLabelRender(self):
     self.renderType = ('LA', 'label')
+    self.changeView(self.logic.getCurrentView())
     
   def onCalcThresholds(self):
     active = self.logic.getActiveSpects()
@@ -778,7 +780,7 @@ class ColonicAnalysisLogic:
      
      
     def renderView(self, timePoint, vtype, vend):
-      #print ("renderView " + vtype)
+      print ("renderView " + vtype)
       if not self.colonData[timePoint][vtype]['Active']:
         return False
       volumesLogic = slicer.modules.volumes.logic()
