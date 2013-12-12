@@ -59,6 +59,7 @@ class ColonicAnalysisWidget:
     self.fileDialog = None
     self.renderType = ('TH', 'threshold')
     self.parameterNode = None
+    self.observerTags = []
     if not parent:
       self.parent = slicer.qMRMLWidget()
       self.parent.setLayout(qt.QVBoxLayout())
@@ -70,6 +71,8 @@ class ColonicAnalysisWidget:
       self.setup()
       self.parent.show()
     self.updateParameterNode(self.parameterNode, vtk.vtkCommand.ModifiedEvent)
+    tag = slicer.mrmlScene.AddObserver(vtk.vtkCommand.ModifiedEvent, self.updateParameterNode)
+    self.observerTags.append( (slicer.mrmlScene, tag) )
     self.setMRMLDefaults()
 
   def setup(self):
@@ -268,6 +271,8 @@ class ColonicAnalysisWidget:
   # in each leaf subclass so that "self" in the observer
   # is of the correct type
   def updateParameterNode(self, caller, event):
+    #print("updateParameterNode(%s, %s)" % (caller, event))
+    #print("updateParameterNode()")
     node = self.getParameterNode()
     if node != self.parameterNode:
       if self.parameterNode:
@@ -276,13 +281,13 @@ class ColonicAnalysisWidget:
       self.parameterNodeTag = node.AddObserver(vtk.vtkCommand.ModifiedEvent, self.updateGUIFromMRML)
 
   def setMRMLDefaults(self):
-    print("setMRMLDefaults()")
+    #print("setMRMLDefaults()")
     disableState = self.parameterNode.GetDisableModifiedEvent()
     self.parameterNode.SetDisableModifiedEvent(1)
     defaults = (
-      ("timepoints", "6HRS 24HRS 32HRS"),
+      ("timepoints", "6HRS,24HRS,32HRS"),
       #("SummaryKeys", '"Label", "Voxels", "Volume cc", "Total Counts", "SPECT Mean"'),
-      ("thresholds", '0 10 0'),
+      ("thresholds", '30,10,0'),
     )
     for d in defaults:
       param = "ColonicAnalysis,"+d[0]
@@ -291,13 +296,15 @@ class ColonicAnalysisWidget:
         self.parameterNode.SetParameter(param, d[1])
     self.parameterNode.SetDisableModifiedEvent(disableState)
     
-  def updateGUIFromMRML(self,caller,event):
-    print("updateGUIFromMRML()")
+  def updateGUIFromMRML(self, caller, event):
+    #print("updateGUIFromMRML()")
     params = ("timepoints", "thresholds",)
     for p in params:
       if self.parameterNode.GetParameter("ColonicAnalysis,"+p) == '':
         # don't update if the parameter node has not got all values yet
         return
+    thrs = self.parameterNode.GetParameter("ColonicAnalysis,thresholds")
+    print("thresholds = %s" % thrs)
     #self.disconnectWidgets()
     #self.toleranceSpinBox.setValue( float(self.parameterNode.GetParameter("WandEffect,tolerance")) )
     #self.maxPixelsSpinBox.setValue( float(self.parameterNode.GetParameter("WandEffect,maxPixels")) )
@@ -567,7 +574,7 @@ class ColonicAnalysisLogic:
     """
     def __init__(self):
         self.keys = ("Label", "Voxels", "Volume cc", "Total Counts", "SPECT Mean")
-        self.colonRegions = ("precolon", "ascending_1", "ascending_2", "transverse_1", 
+        self.colonRegions = ("ascending_1", "ascending_2", "transverse_1", 
           "transverse_2", "transverse_3", "transverse_4", "neorectum", "stool")
         self.timepoints = ("6HRS", "24HRS", "32HRS")
         self.colonData = {
@@ -780,7 +787,7 @@ class ColonicAnalysisLogic:
      
      
     def renderView(self, timePoint, vtype, vend):
-      print ("renderView " + vtype)
+      #print ("renderView " + vtype)
       if not self.colonData[timePoint][vtype]['Active']:
         return False
       volumesLogic = slicer.modules.volumes.logic()
